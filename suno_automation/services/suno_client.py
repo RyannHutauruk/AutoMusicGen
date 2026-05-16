@@ -203,6 +203,14 @@ class SunoClient:
                 'button[type="submit"]',
             ])
 
+    async def _ensure_active_page(self) -> Page:
+        if self.page is None or self.page.is_closed():
+            open_pages = [p for p in self.context.pages if not p.is_closed()]
+            self.page = open_pages[0] if open_pages else await self.context.new_page()
+            self.page.set_default_timeout(settings.timeout_ms)
+            self.logger.info("Recovered active browser page for continued login/session checks")
+        return self.page
+
     async def _manual_login_wait(self) -> None:
         assert self.page
         self.logger.warning(
@@ -212,7 +220,8 @@ class SunoClient:
 
         deadline = asyncio.get_event_loop().time() + settings.manual_login_timeout_seconds
         while asyncio.get_event_loop().time() < deadline:
-            if "/create" in self.page.url:
+            page = await self._ensure_active_page()
+            if "/create" in page.url:
                 return
             try:
                 await self._safe_goto(settings.create_url)
@@ -233,13 +242,14 @@ class SunoClient:
         return None
 
     async def _safe_goto(self, url: str) -> None:
-        assert self.page
+        page = await self._ensure_active_page()
         try:
-            await self.page.goto(url, wait_until="domcontentloaded", timeout=settings.timeout_ms)
-            await self.page.wait_for_load_state("load", timeout=min(settings.timeout_ms, 30000))
+            await page.goto(url, wait_until="domcontentloaded", timeout=settings.timeout_ms)
+            await page.wait_for_load_state("load", timeout=min(settings.timeout_ms, 30000))
         except Exception as first_error:  # noqa: BLE001
             self.logger.warning("Primary navigation to %s failed: %s. Retrying with commit state.", url, first_error)
-            await self.page.goto(url, wait_until="commit", timeout=settings.timeout_ms)
+            page = await self._ensure_active_page()
+            await page.goto(url, wait_until="commit", timeout=settings.timeout_ms)
 
     async def _is_logged_in(self) -> bool:
         assert self.page
