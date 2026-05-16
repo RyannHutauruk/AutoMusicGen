@@ -21,7 +21,7 @@ class SunoClient:
 
     async def login(self) -> None:
         assert self.page
-        await self.page.goto(settings.login_url, wait_until="networkidle")
+        await self._safe_goto(settings.login_url)
         if await self._is_logged_in():
             self.logger.info("Already logged in via persistent profile")
             return
@@ -144,12 +144,22 @@ class SunoClient:
             await asyncio.sleep(0.5)
         return None
 
+
+    async def _safe_goto(self, url: str) -> None:
+        assert self.page
+        try:
+            await self.page.goto(url, wait_until="domcontentloaded", timeout=settings.timeout_ms)
+            await self.page.wait_for_load_state("load", timeout=min(settings.timeout_ms, 30000))
+        except Exception as first_error:  # noqa: BLE001
+            self.logger.warning("Primary navigation to %s failed: %s. Retrying with commit state.", url, first_error)
+            await self.page.goto(url, wait_until="commit", timeout=settings.timeout_ms)
+
     async def _is_logged_in(self) -> bool:
         assert self.page
         if "/create" in self.page.url:
             return True
         try:
-            await self.page.goto(settings.create_url, wait_until="domcontentloaded")
+            await self._safe_goto(settings.create_url)
             return "/create" in self.page.url
         except Exception:  # noqa: BLE001
             return False

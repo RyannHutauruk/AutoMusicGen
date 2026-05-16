@@ -91,5 +91,10 @@ Set `SUNO_LOGIN_METHOD=email` to use the direct email/password flow.
 ## Notes on selectors
 Suno UI can change. Update selectors in `suno_automation/services/suno_client.py` as needed.
 
+
+## Troubleshooting
+- If `Page.goto` to Suno times out, the client now uses resilient navigation (`domcontentloaded` then `commit` retry) instead of strict `networkidle`.
+- If your network is slow, increase `TIMEOUT_MS` (for example `TIMEOUT_MS=180000`).
+
 ## Compliance and safety
 Use only on accounts you own and in compliance with Suno's Terms of Service.
