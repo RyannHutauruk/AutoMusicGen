@@ -44,8 +44,16 @@ class SunoClient:
 
         google_page = await self._find_google_auth_page()
         if not google_page:
-            self.logger.info("Google auth popup not detected. Flow may be same-tab or already authorized.")
-            return
+            # Same-tab Google flow is common on some browsers/settings.
+            if "accounts.google.com" in self.page.url or await self._first_visible_on_page(
+                self.page,
+                ['input[type="email"]', 'input[name="identifier"]', 'input[autocomplete="username"]'],
+            ):
+                self.logger.info("Google auth is running in same tab; continuing on primary page.")
+                google_page = self.page
+            else:
+                self.logger.info("Google auth popup not detected. Flow may be already authorized.")
+                return
 
         email_selector = await self._first_visible_on_page(
             google_page,
@@ -71,6 +79,7 @@ class SunoClient:
         if password_selector:
             await human_type(google_page, password_selector, settings.google_password)
             await self._try_click_any_on_page(google_page, ['button:has-text("Next")', '#passwordNext'])
+            await human_pause(1.0, 2.0)
 
     async def _click_google_login_entry(self) -> bool:
         assert self.page
