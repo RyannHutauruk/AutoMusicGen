@@ -27,6 +27,7 @@ class SunoClient:
             return
 
         if settings.login_method == "google":
+            await self._safe_goto(settings.login_url)
             await self._login_with_google()
         else:
             await self._login_with_email()
@@ -74,8 +75,14 @@ class SunoClient:
     async def _click_google_login_entry(self) -> bool:
         assert self.page
 
+        if self.page.is_closed():
+            self.logger.warning("Login page was closed unexpectedly; reopening sign-in page.")
+            self.page = await self.context.new_page()
+            self.page.set_default_timeout(settings.timeout_ms)
+            await self._safe_goto(settings.login_url)
+
         # Give client-rendered auth buttons time to mount.
-        await self.page.wait_for_timeout(2000)
+        await self.page.wait_for_timeout(2500)
 
         role_candidates = [
             self.page.get_by_role("button", name="Continue with Google"),
@@ -88,6 +95,19 @@ class SunoClient:
             if await locator.count() > 0 and await locator.first.is_visible():
                 text = await locator.first.inner_text()
                 self.logger.info("Clicking Google entry by role: %s", text.strip())
+                await locator.first.click()
+                return True
+
+
+        text_candidates = [
+            self.page.locator("button", has_text="Continue with Google"),
+            self.page.locator("button", has_text="Google"),
+            self.page.locator("a", has_text="Continue with Google"),
+            self.page.locator("span", has_text="Continue with Google"),
+        ]
+        for locator in text_candidates:
+            if await locator.count() > 0 and await locator.first.is_visible():
+                self.logger.info("Clicking Google entry by text locator")
                 await locator.first.click()
                 return True
 
