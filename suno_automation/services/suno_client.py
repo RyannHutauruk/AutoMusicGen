@@ -73,6 +73,10 @@ class SunoClient:
 
     async def _click_google_login_entry(self) -> bool:
         assert self.page
+
+        # Give client-rendered auth buttons time to mount.
+        await self.page.wait_for_timeout(2000)
+
         role_candidates = [
             self.page.get_by_role("button", name="Continue with Google"),
             self.page.get_by_role("button", name="Sign in with Google"),
@@ -88,14 +92,29 @@ class SunoClient:
                 return True
 
         # Strict fallback: only selectors that contain Google text.
-        return await self._try_click_any([
+        fallback_clicked = await self._try_click_any([
             'button:has-text("Continue with Google")',
             'button:has-text("Sign in with Google")',
             'button:has-text("Google")',
             'a:has-text("Continue with Google")',
             'a:has-text("Sign in with Google")',
             'a:has-text("Google")',
+            'span:has-text("Continue with Google")',
         ])
+        if fallback_clicked:
+            return True
+
+        # Helpful diagnostics for runtime debugging.
+        try:
+            html = await self.page.content()
+            Path("suno_automation/logs").mkdir(parents=True, exist_ok=True)
+            Path("suno_automation/logs/login_debug.html").write_text(html, encoding="utf-8")
+            await self.page.screenshot(path="suno_automation/logs/login_debug.png", full_page=True)
+            self.logger.warning("Saved login debug artifacts: suno_automation/logs/login_debug.html and .png")
+        except Exception as debug_error:  # noqa: BLE001
+            self.logger.warning("Failed to capture login debug artifacts: %s", debug_error)
+
+        return False
 
     async def _login_with_email(self) -> None:
         assert self.page

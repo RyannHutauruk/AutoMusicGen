@@ -94,6 +94,7 @@ Suno UI can change. Update selectors in `suno_automation/services/suno_client.py
 
 
 ## Troubleshooting
+- If Google button is not found, the client writes `suno_automation/logs/login_debug.html` and `suno_automation/logs/login_debug.png` for selector troubleshooting.
 - If `Page.goto` to Suno times out, the client now uses resilient navigation (`domcontentloaded` then `commit` retry) instead of strict `networkidle`.
 - If your network is slow, increase `TIMEOUT_MS` (for example `TIMEOUT_MS=180000`).
 - For Google login with 2FA/captcha, increase `MANUAL_LOGIN_TIMEOUT_SECONDS` (for example `420`) and complete verification in the opened browser.
