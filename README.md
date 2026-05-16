@@ -82,7 +82,7 @@ docker run --rm -it \
 ```
 
 ## Login flow note
-Default login mode is Google (`SUNO_LOGIN_METHOD=google`). The client clicks `Continue with Google`, completes Google email/password steps in the auth window, and then returns to Suno.
+Default login mode is Google (`SUNO_LOGIN_METHOD=google`). After opening `/sign-in`, the client must click `Continue with Google` first, then complete Google email/password steps in the auth window and return to Suno.
 
 If Google auth UI changes (or prompts 2FA/captcha), automation falls back to manual login wait mode until `/create` is reached.
 

@@ -37,9 +37,7 @@ class SunoClient:
         assert self.page
         clicked_google = await self._click_google_login_entry()
         if not clicked_google:
-            self.logger.warning("Google login button not found, falling back to manual login.")
-            await self._manual_login_wait()
-            return
+            raise RuntimeError("Required login step missing: could not click 'Continue with Google' on /sign-in")
 
         await human_pause(1.0, 2.0)
 
