@@ -64,7 +64,7 @@ class SunoClient:
             ],
         )
         if email_selector:
-            await human_type(google_page, email_selector, settings.google_email, click_first=False)
+            await self._type_reliably(google_page, email_selector, settings.google_email)
             await self._try_click_any_on_page(google_page, ['button:has-text("Next")', '#identifierNext'])
             await human_pause(1.0, 2.2)
 
@@ -77,7 +77,7 @@ class SunoClient:
             ],
         )
         if password_selector:
-            await human_type(google_page, password_selector, settings.google_password, click_first=False)
+            await self._type_reliably(google_page, password_selector, settings.google_password)
             await self._try_click_any_on_page(google_page, ['button:has-text("Next")', '#passwordNext'])
             await human_pause(1.0, 2.0)
 
@@ -144,6 +144,16 @@ class SunoClient:
             self.logger.warning("Failed to capture login debug artifacts: %s", debug_error)
 
         return False
+
+    async def _type_reliably(self, page: Page, selector: str, text: str) -> None:
+        locator = page.locator(selector).first
+        await locator.wait_for(state="visible", timeout=settings.timeout_ms)
+        await locator.click()
+        await page.wait_for_timeout(250)
+        await locator.press("Control+A")
+        await locator.press("Backspace")
+        await page.wait_for_timeout(150)
+        await human_type(page, selector, text, click_first=False)
 
     async def _login_with_email(self) -> None:
         assert self.page
