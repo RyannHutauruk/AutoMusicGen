@@ -15,8 +15,9 @@ async def human_pause(min_seconds: float = 0.25, max_seconds: float = 1.5) -> No
     await asyncio.sleep(random.uniform(min_seconds, max_seconds))
 
 
-async def human_type(page: Page, selector: str, text: str) -> None:
-    await page.click(selector)
+async def human_type(page: Page, selector: str, text: str, click_first: bool = True) -> None:
+    if click_first:
+        await page.click(selector)
     for ch in text:
         await page.keyboard.type(ch, delay=random.randint(35, 120))
     await human_pause(0.1, 0.4)

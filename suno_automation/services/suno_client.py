@@ -64,7 +64,7 @@ class SunoClient:
             ],
         )
         if email_selector:
-            await human_type(google_page, email_selector, settings.google_email)
+            await human_type(google_page, email_selector, settings.google_email, click_first=False)
             await self._try_click_any_on_page(google_page, ['button:has-text("Next")', '#identifierNext'])
             await human_pause(1.0, 2.2)
 
@@ -77,7 +77,7 @@ class SunoClient:
             ],
         )
         if password_selector:
-            await human_type(google_page, password_selector, settings.google_password)
+            await human_type(google_page, password_selector, settings.google_password, click_first=False)
             await self._try_click_any_on_page(google_page, ['button:has-text("Next")', '#passwordNext'])
             await human_pause(1.0, 2.0)
 
