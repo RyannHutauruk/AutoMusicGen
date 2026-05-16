@@ -60,6 +60,7 @@ MAX_RETRIES=3
 CONCURRENCY=2
 POLL_INTERVAL_SECONDS=8
 TIMEOUT_MS=90000
+MANUAL_LOGIN_TIMEOUT_SECONDS=180
 ```
 
 ## Run
@@ -76,6 +77,9 @@ docker run --rm -it \
   --env-file .env \
   suno-automation
 ```
+
+## Login flow note
+Suno may present provider-first authentication (for example "Continue with email" before fields appear). The automation now handles provider-first patterns and falls back to manual login wait mode if direct fields are unavailable.
 
 ## Notes on selectors
 Suno UI can change. Update selectors in `suno_automation/services/suno_client.py` as needed.

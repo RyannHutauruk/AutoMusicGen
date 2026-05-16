@@ -26,6 +26,7 @@ class Settings(BaseModel):
     concurrency: int = Field(default=int(os.getenv("CONCURRENCY", "2")))
     poll_interval_seconds: int = Field(default=int(os.getenv("POLL_INTERVAL_SECONDS", "8")))
     timeout_ms: int = Field(default=int(os.getenv("TIMEOUT_MS", "90000")))
+    manual_login_timeout_seconds: int = Field(default=int(os.getenv("MANUAL_LOGIN_TIMEOUT_SECONDS", "180")))
 
 
 settings = Settings()

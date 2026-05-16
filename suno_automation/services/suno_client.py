@@ -22,15 +22,94 @@ class SunoClient:
     async def login(self) -> None:
         assert self.page
         await self.page.goto(settings.login_url, wait_until="networkidle")
-        if "create" in self.page.url:
+        if await self._is_logged_in():
             self.logger.info("Already logged in via persistent profile")
             return
-        await human_type(self.page, 'input[type="email"]', settings.email)
+
+        email_inputs = [
+            'input[type="email"]',
+            'input[name="email"]',
+            'input[placeholder*="email" i]',
+        ]
+
+        clicked_email_entry = await self._try_click_any([
+            'button:has-text("Continue with email")',
+            'button:has-text("Continue with Email")',
+            'button:has-text("Sign in with email")',
+            'button:has-text("Use email")',
+            'a:has-text("Continue with email")',
+            'a:has-text("Sign in with email")',
+        ])
+        if clicked_email_entry:
+            await human_pause(0.5, 1.4)
+
+        email_selector = await self._first_visible(email_inputs)
+        if not email_selector:
+            self.logger.warning(
+                "Email field not found. Please complete login manually in the opened browser within %s seconds.",
+                settings.manual_login_timeout_seconds,
+            )
+            await self.page.wait_for_url(
+                "**/create",
+                timeout=settings.manual_login_timeout_seconds * 1000,
+            )
+            return
+
+        await human_type(self.page, email_selector, settings.email)
         await human_pause()
-        await human_type(self.page, 'input[type="password"]', settings.password)
-        await human_pause()
-        await self.page.click('button:has-text("Continue")')
+
+        # Some flows ask for email first, then password on next step.
+        await self._try_click_any([
+            'button:has-text("Continue")',
+            'button:has-text("Next")',
+            'button:has-text("Sign in")',
+            'button[type="submit"]',
+        ])
+        await human_pause(0.8, 1.8)
+
+        password_selector = await self._first_visible([
+            'input[type="password"]',
+            'input[name="password"]',
+            'input[placeholder*="password" i]',
+        ])
+
+        if password_selector:
+            await human_type(self.page, password_selector, settings.password)
+            await human_pause()
+            await self._try_click_any([
+                'button:has-text("Continue")',
+                'button:has-text("Sign in")',
+                'button[type="submit"]',
+            ])
+
         await self.page.wait_for_url("**/create", timeout=settings.timeout_ms)
+
+    async def _is_logged_in(self) -> bool:
+        assert self.page
+        if "/create" in self.page.url:
+            return True
+        try:
+            await self.page.goto(settings.create_url, wait_until="domcontentloaded")
+            return "/create" in self.page.url
+        except Exception:  # noqa: BLE001
+            return False
+
+    async def _try_click_any(self, selectors: list[str]) -> bool:
+        assert self.page
+        for selector in selectors:
+            locator = self.page.locator(selector).first
+            if await locator.count() > 0 and await locator.is_visible():
+                await locator.click()
+                return True
+        return False
+
+    async def _first_visible(self, selectors: list[str]) -> Optional[str]:
+        assert self.page
+        for selector in selectors:
+            locator = self.page.locator(selector).first
+            if await locator.count() > 0 and await locator.is_visible():
+                return selector
+        return None
 
     async def generate_song(self, prompt: PromptRow) -> SongResult:
         assert self.page
