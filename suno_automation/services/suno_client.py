@@ -31,7 +31,7 @@ class SunoClient:
         else:
             await self._login_with_email()
 
-        await self.page.wait_for_url("**/create", timeout=settings.timeout_ms)
+        await self._manual_login_wait()
 
     async def _login_with_google(self) -> None:
         assert self.page
@@ -43,8 +43,7 @@ class SunoClient:
 
         google_page = await self._find_google_auth_page()
         if not google_page:
-            self.logger.warning("Google auth window not found, falling back to manual login.")
-            await self._manual_login_wait()
+            self.logger.info("Google auth popup not detected. Flow may be same-tab or already authorized.")
             return
 
         email_selector = await self._first_visible_on_page(
@@ -72,12 +71,8 @@ class SunoClient:
             await human_type(google_page, password_selector, settings.google_password)
             await self._try_click_any_on_page(google_page, ['button:has-text("Next")', '#passwordNext'])
 
-
     async def _click_google_login_entry(self) -> bool:
         assert self.page
-
-        # Preferred: role-based matcher handles split text nodes like
-        # "Continue with <!-- -->Google" from Suno UI.
         role_candidates = [
             self.page.get_by_role("button", name="Continue with Google"),
             self.page.get_by_role("button", name="Sign in with Google"),
@@ -87,17 +82,19 @@ class SunoClient:
         ]
         for locator in role_candidates:
             if await locator.count() > 0 and await locator.first.is_visible():
+                text = await locator.first.inner_text()
+                self.logger.info("Clicking Google entry by role: %s", text.strip())
                 await locator.first.click()
                 return True
 
-        # Fallback CSS/text selectors.
+        # Strict fallback: only selectors that contain Google text.
         return await self._try_click_any([
-            'button:has-text("Continue with")',
-            'button:has-text("Google")',
             'button:has-text("Continue with Google")',
             'button:has-text("Sign in with Google")',
+            'button:has-text("Google")',
             'a:has-text("Continue with Google")',
             'a:has-text("Sign in with Google")',
+            'a:has-text("Google")',
         ])
 
     async def _login_with_email(self) -> None:
@@ -120,7 +117,6 @@ class SunoClient:
 
         email_selector = await self._first_visible(email_inputs)
         if not email_selector:
-            await self._manual_login_wait()
             return
 
         await human_type(self.page, email_selector, settings.email)
@@ -152,39 +148,31 @@ class SunoClient:
     async def _manual_login_wait(self) -> None:
         assert self.page
         self.logger.warning(
-            "Please complete login manually in the opened browser within %s seconds.",
+            "Waiting for authenticated Suno session up to %s seconds.",
             settings.manual_login_timeout_seconds,
         )
 
         deadline = asyncio.get_event_loop().time() + settings.manual_login_timeout_seconds
         while asyncio.get_event_loop().time() < deadline:
-            current_url = self.page.url
-            if "/create" in current_url:
+            if "/create" in self.page.url:
                 return
-
-            # If user completed Google popup flow, proactively try create page.
             try:
                 await self._safe_goto(settings.create_url)
                 if "/create" in self.page.url:
                     return
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
-
             await asyncio.sleep(2)
 
-        raise TimeoutError(
-            "Manual login timeout: did not reach /create. If Google prompts 2FA/captcha, complete it in browser, "
-            "then set MANUAL_LOGIN_TIMEOUT_SECONDS to a higher value (example: 420)."
-        )
+        raise TimeoutError("Login timeout: session did not reach /create.")
 
     async def _find_google_auth_page(self) -> Optional[Page]:
-        for _ in range(30):
+        for _ in range(40):
             for page in self.context.pages:
                 if "accounts.google.com" in page.url:
                     return page
             await asyncio.sleep(0.5)
         return None
-
 
     async def _safe_goto(self, url: str) -> None:
         assert self.page
