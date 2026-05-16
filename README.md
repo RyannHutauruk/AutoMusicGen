@@ -53,8 +53,11 @@ playwright install chromium
 ## Environment
 Create `.env` in project root:
 ```env
+SUNO_LOGIN_METHOD=google
 SUNO_EMAIL=you@example.com
 SUNO_PASSWORD=supersecret
+SUNO_GOOGLE_EMAIL=you@gmail.com
+SUNO_GOOGLE_PASSWORD=app_or_account_password
 HEADLESS=false
 MAX_RETRIES=3
 CONCURRENCY=2
@@ -79,7 +82,11 @@ docker run --rm -it \
 ```
 
 ## Login flow note
-Suno may present provider-first authentication (for example "Continue with email" before fields appear). The automation now handles provider-first patterns and falls back to manual login wait mode if direct fields are unavailable.
+Default login mode is Google (`SUNO_LOGIN_METHOD=google`). The client clicks `Continue with Google`, completes Google email/password steps in the auth window, and then returns to Suno.
+
+If Google auth UI changes (or prompts 2FA/captcha), automation falls back to manual login wait mode until `/create` is reached.
+
+Set `SUNO_LOGIN_METHOD=email` to use the direct email/password flow.
 
 ## Notes on selectors
 Suno UI can change. Update selectors in `suno_automation/services/suno_client.py` as needed.

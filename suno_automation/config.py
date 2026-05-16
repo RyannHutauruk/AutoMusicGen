@@ -13,8 +13,12 @@ class Settings(BaseModel):
     base_url: str = Field(default="https://suno.com")
     login_url: str = Field(default="https://suno.com/sign-in")
     create_url: str = Field(default="https://suno.com/create")
+
+    login_method: str = Field(default_factory=lambda: os.getenv("SUNO_LOGIN_METHOD", "google").lower())
     email: str = Field(default_factory=lambda: os.getenv("SUNO_EMAIL", ""))
     password: str = Field(default_factory=lambda: os.getenv("SUNO_PASSWORD", ""))
+    google_email: str = Field(default_factory=lambda: os.getenv("SUNO_GOOGLE_EMAIL", os.getenv("SUNO_EMAIL", "")))
+    google_password: str = Field(default_factory=lambda: os.getenv("SUNO_GOOGLE_PASSWORD", os.getenv("SUNO_PASSWORD", "")))
 
     csv_path: Path = Field(default=PROJECT_ROOT / "suno_automation" / "data" / "prompts.csv")
     output_audio_dir: Path = Field(default=PROJECT_ROOT / "suno_automation" / "output" / "audio")

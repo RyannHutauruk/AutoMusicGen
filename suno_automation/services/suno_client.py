@@ -26,13 +26,68 @@ class SunoClient:
             self.logger.info("Already logged in via persistent profile")
             return
 
+        if settings.login_method == "google":
+            await self._login_with_google()
+        else:
+            await self._login_with_email()
+
+        await self.page.wait_for_url("**/create", timeout=settings.timeout_ms)
+
+    async def _login_with_google(self) -> None:
+        assert self.page
+        clicked_google = await self._try_click_any([
+            'button:has-text("Continue with Google")',
+            'button:has-text("Sign in with Google")',
+            'a:has-text("Continue with Google")',
+            'a:has-text("Sign in with Google")',
+        ])
+        if not clicked_google:
+            self.logger.warning("Google login button not found, falling back to manual login.")
+            await self._manual_login_wait()
+            return
+
+        await human_pause(1.0, 2.0)
+
+        google_page = await self._find_google_auth_page()
+        if not google_page:
+            self.logger.warning("Google auth window not found, falling back to manual login.")
+            await self._manual_login_wait()
+            return
+
+        email_selector = await self._first_visible_on_page(
+            google_page,
+            [
+                'input[type="email"]',
+                'input[name="identifier"]',
+                'input[autocomplete="username"]',
+            ],
+        )
+        if email_selector:
+            await human_type(google_page, email_selector, settings.google_email)
+            await self._try_click_any_on_page(google_page, ['button:has-text("Next")', '#identifierNext'])
+            await human_pause(1.0, 2.2)
+
+        password_selector = await self._first_visible_on_page(
+            google_page,
+            [
+                'input[type="password"]',
+                'input[name="Passwd"]',
+                'input[autocomplete="current-password"]',
+            ],
+        )
+        if password_selector:
+            await human_type(google_page, password_selector, settings.google_password)
+            await self._try_click_any_on_page(google_page, ['button:has-text("Next")', '#passwordNext'])
+
+    async def _login_with_email(self) -> None:
+        assert self.page
         email_inputs = [
             'input[type="email"]',
             'input[name="email"]',
             'input[placeholder*="email" i]',
         ]
 
-        clicked_email_entry = await self._try_click_any([
+        await self._try_click_any([
             'button:has-text("Continue with email")',
             'button:has-text("Continue with Email")',
             'button:has-text("Sign in with email")',
@@ -40,25 +95,16 @@ class SunoClient:
             'a:has-text("Continue with email")',
             'a:has-text("Sign in with email")',
         ])
-        if clicked_email_entry:
-            await human_pause(0.5, 1.4)
+        await human_pause(0.5, 1.4)
 
         email_selector = await self._first_visible(email_inputs)
         if not email_selector:
-            self.logger.warning(
-                "Email field not found. Please complete login manually in the opened browser within %s seconds.",
-                settings.manual_login_timeout_seconds,
-            )
-            await self.page.wait_for_url(
-                "**/create",
-                timeout=settings.manual_login_timeout_seconds * 1000,
-            )
+            await self._manual_login_wait()
             return
 
         await human_type(self.page, email_selector, settings.email)
         await human_pause()
 
-        # Some flows ask for email first, then password on next step.
         await self._try_click_any([
             'button:has-text("Continue")',
             'button:has-text("Next")',
@@ -82,7 +128,21 @@ class SunoClient:
                 'button[type="submit"]',
             ])
 
-        await self.page.wait_for_url("**/create", timeout=settings.timeout_ms)
+    async def _manual_login_wait(self) -> None:
+        assert self.page
+        self.logger.warning(
+            "Please complete login manually in the opened browser within %s seconds.",
+            settings.manual_login_timeout_seconds,
+        )
+        await self.page.wait_for_url("**/create", timeout=settings.manual_login_timeout_seconds * 1000)
+
+    async def _find_google_auth_page(self) -> Optional[Page]:
+        for _ in range(30):
+            for page in self.context.pages:
+                if "accounts.google.com" in page.url:
+                    return page
+            await asyncio.sleep(0.5)
+        return None
 
     async def _is_logged_in(self) -> bool:
         assert self.page
@@ -96,8 +156,11 @@ class SunoClient:
 
     async def _try_click_any(self, selectors: list[str]) -> bool:
         assert self.page
+        return await self._try_click_any_on_page(self.page, selectors)
+
+    async def _try_click_any_on_page(self, page: Page, selectors: list[str]) -> bool:
         for selector in selectors:
-            locator = self.page.locator(selector).first
+            locator = page.locator(selector).first
             if await locator.count() > 0 and await locator.is_visible():
                 await locator.click()
                 return True
@@ -105,8 +168,11 @@ class SunoClient:
 
     async def _first_visible(self, selectors: list[str]) -> Optional[str]:
         assert self.page
+        return await self._first_visible_on_page(self.page, selectors)
+
+    async def _first_visible_on_page(self, page: Page, selectors: list[str]) -> Optional[str]:
         for selector in selectors:
-            locator = self.page.locator(selector).first
+            locator = page.locator(selector).first
             if await locator.count() > 0 and await locator.is_visible():
                 return selector
         return None
