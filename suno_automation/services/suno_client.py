@@ -134,7 +134,27 @@ class SunoClient:
             "Please complete login manually in the opened browser within %s seconds.",
             settings.manual_login_timeout_seconds,
         )
-        await self.page.wait_for_url("**/create", timeout=settings.manual_login_timeout_seconds * 1000)
+
+        deadline = asyncio.get_event_loop().time() + settings.manual_login_timeout_seconds
+        while asyncio.get_event_loop().time() < deadline:
+            current_url = self.page.url
+            if "/create" in current_url:
+                return
+
+            # If user completed Google popup flow, proactively try create page.
+            try:
+                await self._safe_goto(settings.create_url)
+                if "/create" in self.page.url:
+                    return
+            except Exception:  # noqa: BLE001
+                pass
+
+            await asyncio.sleep(2)
+
+        raise TimeoutError(
+            "Manual login timeout: did not reach /create. If Google prompts 2FA/captcha, complete it in browser, "
+            "then set MANUAL_LOGIN_TIMEOUT_SECONDS to a higher value (example: 420)."
+        )
 
     async def _find_google_auth_page(self) -> Optional[Page]:
         for _ in range(30):

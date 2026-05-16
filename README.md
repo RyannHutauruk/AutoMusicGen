@@ -95,6 +95,7 @@ Suno UI can change. Update selectors in `suno_automation/services/suno_client.py
 ## Troubleshooting
 - If `Page.goto` to Suno times out, the client now uses resilient navigation (`domcontentloaded` then `commit` retry) instead of strict `networkidle`.
 - If your network is slow, increase `TIMEOUT_MS` (for example `TIMEOUT_MS=180000`).
+- For Google login with 2FA/captcha, increase `MANUAL_LOGIN_TIMEOUT_SECONDS` (for example `420`) and complete verification in the opened browser.
 
 ## Compliance and safety
 Use only on accounts you own and in compliance with Suno's Terms of Service.
