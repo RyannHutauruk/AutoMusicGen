@@ -35,12 +35,7 @@ class SunoClient:
 
     async def _login_with_google(self) -> None:
         assert self.page
-        clicked_google = await self._try_click_any([
-            'button:has-text("Continue with Google")',
-            'button:has-text("Sign in with Google")',
-            'a:has-text("Continue with Google")',
-            'a:has-text("Sign in with Google")',
-        ])
+        clicked_google = await self._click_google_login_entry()
         if not clicked_google:
             self.logger.warning("Google login button not found, falling back to manual login.")
             await self._manual_login_wait()
@@ -78,6 +73,34 @@ class SunoClient:
         if password_selector:
             await human_type(google_page, password_selector, settings.google_password)
             await self._try_click_any_on_page(google_page, ['button:has-text("Next")', '#passwordNext'])
+
+
+    async def _click_google_login_entry(self) -> bool:
+        assert self.page
+
+        # Preferred: role-based matcher handles split text nodes like
+        # "Continue with <!-- -->Google" from Suno UI.
+        role_candidates = [
+            self.page.get_by_role("button", name="Continue with Google"),
+            self.page.get_by_role("button", name="Sign in with Google"),
+            self.page.get_by_role("button", name="Google"),
+            self.page.get_by_role("link", name="Continue with Google"),
+            self.page.get_by_role("link", name="Sign in with Google"),
+        ]
+        for locator in role_candidates:
+            if await locator.count() > 0 and await locator.first.is_visible():
+                await locator.first.click()
+                return True
+
+        # Fallback CSS/text selectors.
+        return await self._try_click_any([
+            'button:has-text("Continue with")',
+            'button:has-text("Google")',
+            'button:has-text("Continue with Google")',
+            'button:has-text("Sign in with Google")',
+            'a:has-text("Continue with Google")',
+            'a:has-text("Sign in with Google")',
+        ])
 
     async def _login_with_email(self) -> None:
         assert self.page

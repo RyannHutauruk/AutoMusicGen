@@ -90,6 +90,7 @@ Set `SUNO_LOGIN_METHOD=email` to use the direct email/password flow.
 
 ## Notes on selectors
 Suno UI can change. Update selectors in `suno_automation/services/suno_client.py` as needed.
+- Suno renders social button labels with split text nodes (e.g., `Continue with <!-- -->Google`), so login uses role-based button matching plus selector fallbacks.
 
 
 ## Troubleshooting
