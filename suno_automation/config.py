@@ -31,6 +31,8 @@ class Settings(BaseModel):
     poll_interval_seconds: int = Field(default=int(os.getenv("POLL_INTERVAL_SECONDS", "8")))
     timeout_ms: int = Field(default=int(os.getenv("TIMEOUT_MS", "90000")))
     manual_login_timeout_seconds: int = Field(default=int(os.getenv("MANUAL_LOGIN_TIMEOUT_SECONDS", "180")))
+    login_poll_base_seconds: float = Field(default=float(os.getenv("LOGIN_POLL_BASE_SECONDS", "3")))
+    login_poll_max_seconds: float = Field(default=float(os.getenv("LOGIN_POLL_MAX_SECONDS", "12")))
 
 
 settings = Settings()

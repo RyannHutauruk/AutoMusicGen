@@ -64,6 +64,8 @@ CONCURRENCY=2
 POLL_INTERVAL_SECONDS=8
 TIMEOUT_MS=90000
 MANUAL_LOGIN_TIMEOUT_SECONDS=180
+LOGIN_POLL_BASE_SECONDS=3
+LOGIN_POLL_MAX_SECONDS=12
 ```
 
 ## Run
@@ -94,6 +96,7 @@ Suno UI can change. Update selectors in `suno_automation/services/suno_client.py
 
 
 ## Troubleshooting
+- Login polling now uses backoff and avoids aggressive reloads during Clerk/auth handshake URLs.
 - If Google button is not found, the client writes `suno_automation/logs/login_debug.html` and `suno_automation/logs/login_debug.png` for selector troubleshooting.
 - If `Page.goto` to Suno times out, the client now uses resilient navigation (`domcontentloaded` then `commit` retry) instead of strict `networkidle`.
 - If your network is slow, increase `TIMEOUT_MS` (for example `TIMEOUT_MS=180000`).

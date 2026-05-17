@@ -211,6 +211,11 @@ class SunoClient:
             self.logger.info("Recovered active browser page for continued login/session checks")
         return self.page
 
+    @staticmethod
+    def _is_handshake_url(url: str) -> bool:
+        u = (url or "").lower()
+        return any(token in u for token in ["clerk", "handshake", "sso-callback", "oauth", "accounts.google.com"])
+
     async def _manual_login_wait(self) -> None:
         assert self.page
         self.logger.warning(
@@ -219,17 +224,30 @@ class SunoClient:
         )
 
         deadline = asyncio.get_event_loop().time() + settings.manual_login_timeout_seconds
+        sleep_seconds = settings.login_poll_base_seconds
+
         while asyncio.get_event_loop().time() < deadline:
             page = await self._ensure_active_page()
-            if "/create" in page.url:
+            current_url = page.url
+            if "/create" in current_url:
                 return
+
+            # During auth handshake, avoid aggressive reload loops.
+            if self._is_handshake_url(current_url):
+                self.logger.info("Auth handshake in progress at %s; waiting %.1fs", current_url, sleep_seconds)
+                await asyncio.sleep(sleep_seconds)
+                sleep_seconds = min(settings.login_poll_max_seconds, sleep_seconds + 1)
+                continue
+
             try:
                 await self._safe_goto(settings.create_url)
-                if "/create" in self.page.url:
+                if self.page and "/create" in self.page.url:
                     return
             except Exception:
                 pass
-            await asyncio.sleep(2)
+
+            await asyncio.sleep(sleep_seconds)
+            sleep_seconds = min(settings.login_poll_max_seconds, sleep_seconds + 1)
 
         raise TimeoutError("Login timeout: session did not reach /create.")
 
