@@ -322,6 +322,8 @@ class SunoClient:
 
         await self._type_reliably(self.page, desc_selector, prompt.lyrics)
 
+        await self._enable_instrumental_mode()
+
         if prompt.style:
             style_selector = await self._first_visible([
                 'input[placeholder*="Style" i]',
@@ -337,6 +339,53 @@ class SunoClient:
         result = SongResult(prompt_id=prompt.prompt_id, title=prompt.title, status="queued")
         await self._wait_for_completion(result)
         return result
+
+    async def _enable_instrumental_mode(self) -> None:
+        assert self.page
+        candidates = [
+            self.page.get_by_role("switch", name="Instrumental"),
+            self.page.get_by_role("checkbox", name="Instrumental"),
+            self.page.get_by_role("button", name="Instrumental"),
+            self.page.locator("label:has-text('Instrumental')"),
+            self.page.locator("button:has-text('Instrumental')"),
+            self.page.locator("[data-testid*='instrumental']"),
+        ]
+        for locator in candidates:
+            if await locator.count() == 0:
+                continue
+            item = locator.first
+            if not await item.is_visible():
+                continue
+            aria_checked = await item.get_attribute("aria-checked")
+            checked = await item.get_attribute("checked")
+            if aria_checked == "true" or checked is not None:
+                self.logger.info("Instrumental mode already enabled")
+                return
+            await item.scroll_into_view_if_needed()
+            try:
+                await item.click()
+            except Exception:
+                await item.click(force=True)
+            self.logger.info("Enabled instrumental mode")
+            return
+        self.logger.warning("Instrumental toggle not found; continuing without explicit instrumental click")
+
+    async def _click_locator_with_fallback(self, locator) -> bool:
+        try:
+            await locator.click(timeout=5000)
+            return True
+        except Exception:
+            try:
+                await self.page.keyboard.press("Escape")
+                await self.page.wait_for_timeout(200)
+                await locator.click(timeout=5000)
+                return True
+            except Exception:
+                try:
+                    await locator.click(force=True, timeout=5000)
+                    return True
+                except Exception:
+                    return False
 
     async def _click_create_button(self) -> bool:
         assert self.page
@@ -361,8 +410,9 @@ class SunoClient:
                 aria_disabled = await btn.get_attribute("aria-disabled")
                 if disabled is None and aria_disabled not in {"true", "1"}:
                     await btn.scroll_into_view_if_needed()
-                    await btn.click()
-                    return True
+                    clicked = await self._click_locator_with_fallback(btn)
+                    if clicked:
+                        return True
             await asyncio.sleep(1)
 
         return False
