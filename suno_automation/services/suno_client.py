@@ -396,6 +396,11 @@ class SunoClient:
             self.page.locator('button:has-text("Generate")'),
             self.page.locator('button[type="submit"]'),
             self.page.locator('button span:has-text("Create")').locator('xpath=ancestor::button[1]'),
+            # Icon-path based fallback provided by user for the create control.
+            # Scope icon-path matches to bottom composer/create area to avoid left-menu duplicates.
+            self.page.locator('div[data-panel="true"] path[d*="m9.35 8.232-2.446.244"]').locator('xpath=ancestor::*[@role="button" or self::button][1]'),
+            self.page.locator('div[data-panel="true"] path[d*="M10.96 7.56"]').locator('xpath=ancestor::*[@role="button" or self::button][1]'),
+            self.page.locator('main path[d*="m9.35 8.232-2.446.244"]').locator('xpath=ancestor::*[@role="button" or self::button][1]'),
         ]
 
         # wait up to ~20s for button to appear and become enabled
@@ -405,6 +410,10 @@ class SunoClient:
                     continue
                 btn = locator.first
                 if not await btn.is_visible():
+                    continue
+                btn_class = ((await btn.get_attribute("class")) or "").lower()
+                # skip likely sidebar/menu controls; we need bottom create composer button
+                if "sidebar" in btn_class:
                     continue
                 disabled = await btn.get_attribute("disabled")
                 aria_disabled = await btn.get_attribute("aria-disabled")
