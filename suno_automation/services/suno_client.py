@@ -304,50 +304,134 @@ class SunoClient:
 
     async def generate_song(self, prompt: PromptRow) -> SongResult:
         assert self.page
-        await self.page.goto(settings.create_url, wait_until="domcontentloaded")
+        await self._safe_goto(settings.create_url)
         await human_pause()
-        await self.page.click('button:has-text("Custom Mode")')
-        await human_type(self.page, 'textarea[placeholder*="Describe"]', prompt.lyrics)
-        await human_type(self.page, 'input[placeholder*="Style"]', prompt.style)
-        await self.page.click('button:has-text("Create")')
+
+        await self._try_click_any([
+            'button:has-text("Custom Mode")',
+            'button:has-text("Custom")',
+        ])
+
+        desc_selector = await self._first_visible([
+            'textarea[placeholder*="Describe" i]',
+            'textarea[placeholder*="song" i]',
+            'textarea',
+        ])
+        if not desc_selector:
+            raise RuntimeError("Song description input not found on create page")
+
+        await self._type_reliably(self.page, desc_selector, prompt.lyrics)
+
+        if prompt.style:
+            style_selector = await self._first_visible([
+                'input[placeholder*="Style" i]',
+                'input[placeholder*="genre" i]',
+            ])
+            if style_selector:
+                await self._type_reliably(self.page, style_selector, prompt.style)
+
+        clicked_create = await self._click_create_button()
+        if not clicked_create:
+            raise RuntimeError("Create/Generate button not found or still disabled")
 
         result = SongResult(prompt_id=prompt.prompt_id, title=prompt.title, status="queued")
         await self._wait_for_completion(result)
         return result
 
+    async def _click_create_button(self) -> bool:
+        assert self.page
+        candidates = [
+            self.page.get_by_role("button", name="Create"),
+            self.page.get_by_role("button", name="Generate"),
+            self.page.locator('button:has-text("Create")'),
+            self.page.locator('button:has-text("Generate")'),
+            self.page.locator('button[type="submit"]'),
+            self.page.locator('button span:has-text("Create")').locator('xpath=ancestor::button[1]'),
+        ]
+
+        # wait up to ~20s for button to appear and become enabled
+        for _ in range(20):
+            for locator in candidates:
+                if await locator.count() == 0:
+                    continue
+                btn = locator.first
+                if not await btn.is_visible():
+                    continue
+                disabled = await btn.get_attribute("disabled")
+                aria_disabled = await btn.get_attribute("aria-disabled")
+                if disabled is None and aria_disabled not in {"true", "1"}:
+                    await btn.scroll_into_view_if_needed()
+                    await btn.click()
+                    return True
+            await asyncio.sleep(1)
+
+        return False
+
     async def _wait_for_completion(self, result: SongResult) -> None:
         assert self.page
-        for _ in range(120):
-            status_locator = self.page.locator("[data-testid='generation-status']").first
+        max_rounds = 180
+        for _ in range(max_rounds):
+            # Prefer explicit status labels when available
+            status_locator = self.page.locator("[data-testid='generation-status'], [aria-live='polite']").first
             if await status_locator.count() > 0:
                 status_text = (await status_locator.inner_text()).lower()
-                if "complete" in status_text or "ready" in status_text:
-                    result.status = "completed"
-                    result.suno_track_id = await self.page.locator("[data-track-id]").first.get_attribute("data-track-id")
-                    result.download_url = await self.page.locator("a[href*='download']").first.get_attribute("href")
-                    return
-                if "failed" in status_text:
+                if "failed" in status_text or "error" in status_text:
                     result.status = "failed"
-                    result.error = "generation failed from UI status"
+                    result.error = f"generation failed: {status_text}"
                     return
+
+            # Spinner/progress disappearance heuristic
+            active_spinners = self.page.locator(
+                "svg.animate-spin, [role='progressbar'], [data-testid*='loading'], [aria-busy='true']"
+            )
+            spinner_count = await active_spinners.count()
+
+            download_links = self.page.locator("a[href*='download'], button:has-text('Download')")
+            has_downloads = await download_links.count() > 0
+
+            if spinner_count == 0 and has_downloads:
+                result.status = "completed"
+                result.suno_track_id = await self.page.locator("[data-track-id]").first.get_attribute("data-track-id")
+                result.download_url = await self.page.locator("a[href*='download']").first.get_attribute("href")
+                return
+
             await asyncio.sleep(settings.poll_interval_seconds)
+
         result.status = "timeout"
-        result.error = "generation timeout"
+        result.error = "generation timeout (spinner/status did not resolve)"
 
     async def download_audio(self, result: SongResult) -> SongResult:
         assert self.page
-        if not result.download_url:
+
+        # Suno usually returns 2 songs per generation; download up to 2 links.
+        anchors = self.page.locator("a[href*='download']")
+        link_count = await anchors.count()
+
+        if link_count == 0 and result.download_url:
+            link_count = 1
+
+        if link_count == 0:
             result.status = "failed"
             result.error = "download url missing"
             return result
 
-        target = settings.output_audio_dir / f"{result.prompt_id}_{result.suno_track_id or 'track'}.mp3"
-        target.parent.mkdir(parents=True, exist_ok=True)
+        saved_any = False
+        for idx in range(min(link_count, 2)):
+            href = result.download_url if idx == 0 and result.download_url else await anchors.nth(idx).get_attribute("href")
+            if not href:
+                continue
+            target = settings.output_audio_dir / f"{result.prompt_id}_{result.suno_track_id or 'track'}_{idx+1}.mp3"
+            target.parent.mkdir(parents=True, exist_ok=True)
 
-        async with self.page.expect_download() as download_info:
-            await self.page.goto(result.download_url)
-        download = await download_info.value
-        await download.save_as(str(target))
+            async with self.page.expect_download() as download_info:
+                await self.page.goto(href)
+            download = await download_info.value
+            await download.save_as(str(target))
+            if not saved_any:
+                result.local_path = Path(target)
+                saved_any = True
 
-        result.local_path = Path(target)
+        if not saved_any:
+            result.status = "failed"
+            result.error = "no downloadable files were saved"
         return result
